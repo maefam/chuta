@@ -7,6 +7,7 @@ import { toRubyHtml, stripRuby } from "../lib/furigana.js";
 import { hasHardKanji } from "../lib/kanji.js";
 import { probeSpeech, isChrome } from "../lib/voice.js";
 import { Usage } from "../lib/usage.js";
+import { loadRemote } from "../lib/knowledge.js";
 
 const SPEECH_RESULT_LABEL = {
   ok: "使える",
@@ -87,6 +88,9 @@ export function initParent(root, ctx) {
   }
 
   function showSettings(settings) {
+    let localKnowledgeText = settings.knowledge || ""; // 端末内のメモ（保存のたびにここも更新する）
+    let remoteKnowledgeState = { text: "", from: "none", fetchedAt: null }; // knowledge.md の最後に取得した内容
+
     root.innerHTML = `
       <div class="parent">
         <div class="parent__top">
@@ -212,9 +216,16 @@ export function initParent(root, ctx) {
 
           <section class="parent__section">
             <h2>教え方のメモ（ナレッジ）</h2>
-            <div class="field">
-              <label>ちゅーた先生への申し送り事項</label>
-              <textarea data-f="knowledge" placeholder="例）まず線分図を描かせる。式より先に図。"></textarea>
+            <p class="parent__hint">置き場のファイルの内容（編集はGitHubの画面から）</p>
+            <div class="knowledge-remote__box" data-el="knowledge-remote-box"></div>
+            <div class="knowledge-remote__foot">
+              <span class="knowledge-remote__status" data-el="knowledge-remote-status"></span>
+              <button class="btn-text" type="button" data-act="knowledge-reload">読み直す</button>
+            </div>
+            <div class="field" style="margin-top: 16px;">
+              <label>この端末でのメモ</label>
+              <p class="knowledge-local__preview" data-el="knowledge-local-preview"></p>
+              <button class="btn-secondary" type="button" data-act="knowledge-expand">広げて書く</button>
             </div>
           </section>
 
@@ -238,6 +249,25 @@ export function initParent(root, ctx) {
           <div class="modal-card__body" data-el="modal-body"></div>
         </div>
       </div>
+
+      <div class="modal-overlay" data-el="knowledge-modal" hidden>
+        <div class="modal-card modal-card--full">
+          <div class="modal-card__top">
+            <strong>この端末でのメモ</strong>
+            <button class="btn-text" type="button" data-act="knowledge-modal-close">とじる</button>
+          </div>
+          <div class="modal-card__body knowledge-editor">
+            <textarea
+              class="knowledge-editor__textarea"
+              data-el="knowledge-editor-textarea"
+              placeholder="例）まず線分図を描かせる。式より先に図。"
+            ></textarea>
+          </div>
+          <div class="modal-card__foot">
+            <button class="btn-primary" type="button" data-act="knowledge-modal-save">保存する</button>
+          </div>
+        </div>
+      </div>
     `;
 
     root.querySelector('[data-act="close"]').addEventListener("click", () => ctx.onClose());
@@ -254,7 +284,6 @@ export function initParent(root, ctx) {
       "turnLimit",
       "dailyYen",
       "pin",
-      "knowledge",
       "otherInputPrice",
       "otherOutputPrice",
       "usdJpy",
@@ -310,7 +339,7 @@ export function initParent(root, ctx) {
 
     function collectForm() {
       const patch = {};
-      for (const key of ["provider", "claudeKey", "claudeModel", "openaiKey", "openaiModel", "effort", "grade", "pin", "knowledge"]) {
+      for (const key of ["provider", "claudeKey", "claudeModel", "openaiKey", "openaiModel", "effort", "grade", "pin"]) {
         const el = root.querySelector(`[data-f="${key}"]`);
         if (el) patch[key] = el.value;
       }
@@ -333,6 +362,53 @@ export function initParent(root, ctx) {
     renderSuggestions();
     renderSessionList();
     renderUsage();
+    renderLocalKnowledge();
+    refreshRemoteKnowledge();
+
+    // 端末内のメモの下書き表示（一覧の小さなプレビュー）
+    function renderLocalKnowledge() {
+      const el = root.querySelector('[data-el="knowledge-local-preview"]');
+      if (!el) return;
+      el.textContent = localKnowledgeText.trim() ? localKnowledgeText : "（まだ何も書いていません）";
+    }
+
+    // 正本 knowledge.md を取りに行き、読み取り専用の区画に表示する（実装仕様の追加分）。
+    // 取得できなければ、控え（前回分）があればそれを、無ければ「読めませんでした」を出す。
+    async function refreshRemoteKnowledge() {
+      const boxEl = root.querySelector('[data-el="knowledge-remote-box"]');
+      const statusEl = root.querySelector('[data-el="knowledge-remote-status"]');
+      if (statusEl) statusEl.textContent = "読み込んでいます…";
+      remoteKnowledgeState = await loadRemote();
+      if (!boxEl || !statusEl) return;
+      if (remoteKnowledgeState.from === "none") {
+        boxEl.textContent = "";
+        statusEl.textContent = "置き場のファイルを読めませんでした。端末のメモだけを使います。";
+      } else {
+        boxEl.textContent = remoteKnowledgeState.text;
+        statusEl.textContent = remoteKnowledgeState.fetchedAt
+          ? `取得：${new Date(remoteKnowledgeState.fetchedAt).toLocaleString("ja-JP")}`
+          : "";
+      }
+    }
+
+    root.querySelector('[data-act="knowledge-reload"]').addEventListener("click", () => refreshRemoteKnowledge());
+
+    root.querySelector('[data-act="knowledge-expand"]').addEventListener("click", () => {
+      root.querySelector('[data-el="knowledge-editor-textarea"]').value = localKnowledgeText;
+      root.querySelector('[data-el="knowledge-modal"]').hidden = false;
+    });
+
+    root.querySelector('[data-act="knowledge-modal-close"]').addEventListener("click", () => {
+      root.querySelector('[data-el="knowledge-modal"]').hidden = true;
+    });
+
+    root.querySelector('[data-act="knowledge-modal-save"]').addEventListener("click", async () => {
+      localKnowledgeText = root.querySelector('[data-el="knowledge-editor-textarea"]').value;
+      await Settings.save({ knowledge: localKnowledgeText });
+      settings.knowledge = localKnowledgeText;
+      renderLocalKnowledge();
+      root.querySelector('[data-el="knowledge-modal"]').hidden = true;
+    });
 
     // 今日・今月の呼び出し回数・トークン数・概算費用（実装仕様4版4章）。
     // 金額（yen）が null のときは単価が入っていないということなので、金額欄は出さずトークン数だけ出す。
@@ -386,12 +462,12 @@ export function initParent(root, ctx) {
     }
 
     async function acceptSuggestion(s) {
-      const textarea = root.querySelector('[data-f="knowledge"]');
-      const current = (textarea && textarea.value) || "";
+      const current = localKnowledgeText || "";
       const updated = current.trim() ? `${current}\n${s.text}` : s.text;
-      if (textarea) textarea.value = updated;
+      localKnowledgeText = updated;
       await Settings.save({ knowledge: updated });
       settings.knowledge = updated;
+      renderLocalKnowledge();
       await Suggestions.remove(s.id);
       renderSuggestions();
     }

@@ -1,8 +1,7 @@
 <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ちゅーた先生">
-  <!-- ホーム画面アイコン。assets/chuta.js の「ふつう」の絵を写し、正方形に座標を調整したもの。
-       chuta.js 自体は書きかえていない（このファイルは独立した複製）。 -->
-  <circle cx="100" cy="100" r="96" fill="#f6ece0"/>
-  <g transform="translate(100,100) scale(1.35) translate(-100,-91.5)">
+  <title>ちゅーた先生</title>
+  <rect x="0" y="0" width="200" height="200" fill="#f6ece0"/>
+  <g transform="translate(-20,-10) scale(1.2)">
     <circle cx="72" cy="54" r="17" fill="#cdb999"/>
     <circle cx="72" cy="54" r="8.5" fill="#e8a390"/>
     <circle cx="128" cy="54" r="17" fill="#cdb999"/>

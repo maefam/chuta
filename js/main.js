@@ -11,6 +11,7 @@ import { initCamera } from "./ui/camera.js";
 import { initChat } from "./ui/chat.js";
 import { initHandoff } from "./ui/handoff.js";
 import { initParent } from "./ui/parent.js";
+import { loadRemote, combine } from "./lib/knowledge.js";
 
 // 定着の類題（S6）の問題数。アプリが決める（実装仕様2版7章）。
 const PRACTICE_DEFAULT = 3;
@@ -39,6 +40,24 @@ let chatController = null;
 let cameraController = null;
 let trackedUrls = [];
 let practiceMistakeSeen = false; // S6で一度でもまちがえたか（practiceTotal を伸ばすかの判断用）
+
+// 教え方のメモの正本（knowledge.md）。セッション開始時に1回だけ取りに行き、そのセッション中は使い回す。
+let remoteKnowledge = { text: "", from: "none", fetchedAt: null };
+
+// セッションを始める・続きから開くときに呼ぶ。取れなくても会話は普通に始めるので、ここで失敗を吸収する。
+async function refreshRemoteKnowledge() {
+  try {
+    remoteKnowledge = await loadRemote();
+  } catch {
+    remoteKnowledge = { text: "", from: "none", fetchedAt: null };
+  }
+}
+
+// AIに渡す設定。保存済みの settings はそのまま使わず、knowledge だけ正本＋端末メモの合成文字列に
+// 差し替えた別オブジェクトを返す（保存側に合成後の文字列が混ざらないようにするため）。
+function aiSettings() {
+  return { ...settings, knowledge: combine(remoteKnowledge.text, settings.knowledge) };
+}
 
 function showScreen(el) {
   for (const s of SCREENS) s.hidden = s !== el;
@@ -115,6 +134,7 @@ async function startPhotoFlow() {
   sessionId = await Sessions.create();
   session = new TutorSession({ settings, sessionId });
   practiceMistakeSeen = false;
+  await refreshRemoteKnowledge();
   chatController = initChat(chatEl, chatCtx());
   showScreen(cameraEl);
   mountCamera(false);
@@ -145,6 +165,7 @@ async function startTextFlow() {
   sessionId = await Sessions.create();
   session = new TutorSession({ settings, sessionId });
   practiceMistakeSeen = false;
+  await refreshRemoteKnowledge();
   showScreen(chatEl);
   chatController = initChat(chatEl, chatCtx());
   chatController.openTextInput();
@@ -161,6 +182,7 @@ async function continueSession(target) {
   await session.hydrate(stored);
   // practiceTotal が既定より大きければ、途中でまちがえて伸ばした跡と見なす
   practiceMistakeSeen = (session.practiceTotal || 0) > PRACTICE_DEFAULT;
+  await refreshRemoteKnowledge();
   showScreen(chatEl);
   chatController = initChat(chatEl, chatCtx());
   replayHistory(stored);
@@ -313,7 +335,7 @@ async function sendTurn({ text, image, isAnswer, unit }) {
   chatController.setThinking(true);
   let reply;
   try {
-    reply = await ask({ settings, session, extraNote });
+    reply = await ask({ settings: aiSettings(), session, extraNote });
   } catch (err) {
     chatController.setThinking(false);
     const code = err instanceof AiError ? err.code : undefined;
@@ -358,7 +380,7 @@ async function generateReport(fallbackSay) {
   try {
     await session.pushChild("今日はここまでにする", undefined);
     if (chatController) chatController.setThinking(true);
-    const reply = await ask({ settings, session, extraNote: REPORT_REQUEST });
+    const reply = await ask({ settings: aiSettings(), session, extraNote: REPORT_REQUEST });
     if (chatController) chatController.setThinking(false);
     await session.pushChuta(reply);
     await maybeSaveSuggestion(reply);
@@ -396,7 +418,7 @@ async function triggerHandoff() {
   chatController.setThinking(true);
   let reply;
   try {
-    reply = await ask({ settings, session, extraNote: HANDOFF_REQUEST });
+    reply = await ask({ settings: aiSettings(), session, extraNote: HANDOFF_REQUEST });
   } catch (err) {
     chatController.setThinking(false);
     const code = err instanceof AiError ? err.code : undefined;

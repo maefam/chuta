@@ -72,6 +72,10 @@ self.addEventListener("fetch", (event) => {
   // APIへの通信は絶対にキャッシュしない。respondWith を呼ばず、ブラウザの既定の取得に任せる。
   if (NO_CACHE_HOSTS.includes(url.hostname)) return;
 
+  // 教え方のメモの正本（knowledge.md）もキャッシュしない。親がGitHubで編集してもすぐ効くように、
+  // 常にネットワークから直接取りに行かせる（APIの通信と同じ扱い）。
+  if (url.pathname.endsWith("/knowledge.md")) return;
+
   // 同一オリジンの静的ファイルだけを対象にする（フォントCDN等を将来足しても壊れないように）。
   if (url.origin !== self.location.origin) return;
 
