@@ -7,6 +7,7 @@ import { AiError } from "./errors.js";
 import { ask as claudeAsk } from "./claude.js";
 import { ask as openaiAsk } from "./openai.js";
 import { ask as mockAsk } from "./mock.js";
+import { ask as manualAsk } from "./manual.js";
 import { Usage } from "../lib/usage.js";
 
 export { AiError } from "./errors.js";
@@ -21,13 +22,17 @@ export async function ask({ settings, session, extraNote }) {
 function pickImpl(provider) {
   if (provider === "claude") return claudeAsk;
   if (provider === "openai") return openaiAsk;
+  if (provider === "manual") return manualAsk;
   return mockAsk;
 }
 
-// settings.provider に応じた、利用量記録に使うモデル名
-function modelOf(settings) {
+// settings.provider に応じた、利用量記録に使うモデル名。
+// usage.model が返ってきていれば（図があるときのモデル切り替えなど）そちらを優先する。
+function modelOf(settings, usage) {
+  if (usage && usage.model) return usage.model;
   if (settings.provider === "claude") return settings.claudeModel;
   if (settings.provider === "openai") return settings.openaiModel;
+  if (settings.provider === "manual") return "manual";
   return "mock";
 }
 
@@ -47,7 +52,7 @@ async function requestOnce({ impl, settings, session, extraNote, retryLeft }) {
   // 問い合わせ1回分のトークン数と概算費用を記録する（実装仕様4 第4章）
   Usage.record({
     provider: settings.provider,
-    model: modelOf(settings),
+    model: modelOf(settings, usage),
     inputTokens: usage ? usage.inputTokens : 0,
     outputTokens: usage ? usage.outputTokens : 0,
   });

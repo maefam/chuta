@@ -1,14 +1,21 @@
 // 会話画面。吹き出しの列＋ expect による下部コントロールの切り替え。
 import { CHUTA } from "../../assets/chuta.js";
 import { toRubyHtml } from "../lib/furigana.js";
+import { toPlainMath } from "../lib/mathtext.js";
 import { speechSupport, startDictation, transcribeWithOpenAI } from "../lib/voice.js";
+import { sanitizeSvg } from "../lib/figure.js";
 
 const FIXED_CHOICES = ["わからない", "わかった、次へ"];
 const MAX_CHOICE_BUTTONS = 4;
+// choices が空で返ってきたときの受け皿（親要望4章）。expect が number/photo 以外のときだけ使う。
+const FALLBACK_CHOICES = ["もう一度説明して", "つづけて", "自分の考えを話す"];
 
 // 「声で話すのはこの端末では使えないみたい」の案内は、ページを開いている間に一度だけ伝える
 // （実装仕様4版2章）。会話をやり直しても何度も言わないよう、モジュール単位で持つ。
 let blockedNoticeShown = false;
+
+// visualViewport の resize リスナー。initChat を呼び直すたびに前回分を外し、多重登録を防ぐ。
+let vvResizeHandler = null;
 
 // startDictation の onError に渡ってくる値から、Web Speech の裏側が止められている状態
 // （Braveなどでの 'network' / 'service-not-allowed'）かどうかを見る。
@@ -24,6 +31,7 @@ function looksBlocked(err) {
 //   onGoHome(),      // まとめ画面の「ホームにもどる」（保存済みなので確認は不要）
 //   onCallParent(),  // 「おうちの人に聞く」「おうちの人を呼ぶ」
 //   onDismissCallParent(),  // 二択の「もう少しやる」
+//   onPracticeSkip(), // 定着の類題（S6）の「あとでやる」
 //   settings,        // 現在の設定（音声の代わりの方法・OpenAIキーの判定に使う）
 // }
 // 戻り値: コントローラ
@@ -66,6 +74,15 @@ export function initChat(root, ctx) {
         </div>
       </div>
     </div>
+    <div class="modal-overlay" data-el="figure-modal" hidden>
+      <div class="modal-card modal-card--full modal-card--figure">
+        <div class="modal-card__top">
+          <strong>図</strong>
+          <button class="btn-text" type="button" data-act="figure-modal-close">とじる</button>
+        </div>
+        <div class="modal-card__body" data-el="figure-modal-body"></div>
+      </div>
+    </div>
   `;
 
   const messagesEl = root.querySelector('[data-el="messages"]');
@@ -77,6 +94,8 @@ export function initChat(root, ctx) {
   const bottomEl = root.querySelector('[data-el="bottom"]');
   const practiceEl = root.querySelector('[data-el="practice"]');
   const stopConfirmEl = root.querySelector('[data-el="stop-confirm"]');
+  const figureModalEl = root.querySelector('[data-el="figure-modal"]');
+  const figureModalBody = root.querySelector('[data-el="figure-modal-body"]');
 
   let lastReply = null;
   let lastOpts = {};
@@ -91,12 +110,35 @@ export function initChat(root, ctx) {
     stopConfirmEl.hidden = true;
     ctx.onStop();
   });
+  root.querySelector('[data-act="figure-modal-close"]').addEventListener("click", closeFigureModal);
+  figureModalEl.addEventListener("click", (ev) => {
+    if (ev.target === figureModalEl) closeFigureModal();
+  });
+
+  function openFigureModal(safeSvg) {
+    figureModalBody.innerHTML = safeSvg;
+    figureModalEl.hidden = false;
+  }
+  function closeFigureModal() {
+    figureModalEl.hidden = true;
+    figureModalBody.innerHTML = "";
+  }
   root.querySelector('[data-act="call-parent"]').addEventListener("click", () => ctx.onCallParent());
   root.querySelector('[data-act="photo"]').addEventListener("click", () => ctx.onRequestPhoto());
   root.querySelector('[data-act="write"]').addEventListener("click", () => {
-    textRow.hidden = !textRow.hidden;
-    if (!textRow.hidden) textInput.focus();
+    setTextRowOpen(textRow.hidden);
   });
+
+  // 文字入力とテンキー・選択肢は入力の手段が重なるので、同時には出さない。
+  // 両方出すとキーボードが開いたときに下の操作が画面から溢れる。
+  function setTextRowOpen(open) {
+    textRow.hidden = !open;
+    answerArea.hidden = open;
+    if (open) {
+      textInput.focus();
+      scrollToBottom();
+    }
+  }
   root.querySelector('[data-act="text-send"]').addEventListener("click", sendTextInput);
   textInput.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !ev.shiftKey) {
@@ -108,10 +150,19 @@ export function initChat(root, ctx) {
   const voiceBtn = root.querySelector('[data-act="voice"]');
   if (voiceBtn) wireVoice(voiceBtn);
 
+  // キーボードの開閉で見えている高さが変わったとき、会話を一番下までスクロールし直す（親要望1章）。
+  // visualViewport が無い環境では何もしない。
+  if (window.visualViewport) {
+    if (vvResizeHandler) window.visualViewport.removeEventListener("resize", vvResizeHandler);
+    vvResizeHandler = () => scrollToBottom();
+    window.visualViewport.addEventListener("resize", vvResizeHandler);
+  }
+
   function sendTextInput() {
     const text = textInput.value.trim();
     if (!text) return;
     textInput.value = "";
+    setTextRowOpen(false);
     ctx.onSend({ text });
   }
 
@@ -248,13 +299,35 @@ export function initChat(root, ctx) {
     scrollToBottom();
   }
 
-  function appendChuta(text) {
+  // figure はAIが返したSVG文字列（空のことが多い）。表示前に必ず sanitizeSvg を通す。
+  function appendChuta(text, figure) {
     const row = document.createElement("div");
     row.className = "bubble-row bubble-row--chuta";
     row.innerHTML = `<div class="bubble bubble--chuta"></div>`;
-    row.querySelector(".bubble").innerHTML = toRubyHtml(text || "");
+    const bubble = row.querySelector(".bubble");
+    bubble.innerHTML = toRubyHtml(toPlainMath(text || ""));
+    const safeSvg = figure ? sanitizeSvg(figure) : "";
+    if (safeSvg) bubble.appendChild(buildFigureEl(safeSvg));
     messagesEl.appendChild(row);
     scrollToBottom();
+  }
+
+  // 吹き出しの中に図を置く。タップすると画面いっぱいに広げて見せる（細かい目盛りが読めるように）。
+  function buildFigureEl(safeSvg) {
+    const wrap = document.createElement("div");
+    wrap.className = "chuta-figure";
+    wrap.setAttribute("role", "button");
+    wrap.tabIndex = 0;
+    wrap.innerHTML = `<div class="chuta-figure__svg">${safeSvg}</div><span class="chuta-figure__hint">タップで大きく</span>`;
+    const open = () => openFigureModal(safeSvg);
+    wrap.addEventListener("click", open);
+    wrap.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        open();
+      }
+    });
+    return wrap;
   }
 
   function setFace(mood) {
@@ -271,7 +344,7 @@ export function initChat(root, ctx) {
   // reply = {say, choices, expect, unit, done}
   // opts = { callParent?:boolean, practiceRemaining?:number|null }
   function showReply(reply, opts) {
-    appendChuta(reply.say);
+    appendChuta(reply.say, reply.figure);
     setFace(reply.done ? "praise" : "normal");
     renderControls(reply, opts);
   }
@@ -282,7 +355,8 @@ export function initChat(root, ctx) {
     answerArea.innerHTML = "";
 
     const remaining = lastOpts.practiceRemaining;
-    practiceEl.hidden = remaining === undefined || remaining === null;
+    const isS6 = remaining !== undefined && remaining !== null; // 定着の類題（S6）の最中か
+    practiceEl.hidden = !isS6;
     if (!practiceEl.hidden) practiceEl.textContent = `あと${remaining}問`;
 
     if (lastOpts.callParent) {
@@ -291,17 +365,35 @@ export function initChat(root, ctx) {
       return;
     }
 
+    // expect が number/photo 以外なのに choices が空のときの受け皿（親要望4章）
+    const choicesEmpty = !reply.choices || reply.choices.length === 0;
+
     textRow.hidden = reply.expect !== "text";
     if (reply.expect === "choice") {
-      renderChoices(reply.choices || []);
+      renderChoices(choicesEmpty ? FALLBACK_CHOICES : reply.choices, isS6);
     } else if (reply.expect === "number") {
       renderNumpad(reply.unit || "");
     } else if (reply.expect === "photo") {
       renderPhotoPrompt();
     } else if (reply.expect === "text") {
+      if (choicesEmpty) renderChoices(FALLBACK_CHOICES, isS6);
       textInput.focus();
+    } else if (choicesEmpty) {
+      // "none" は原則ボタンなし（応答待ちのみ）だが、choices が空のときだけ受け皿を出す
+      renderChoices(FALLBACK_CHOICES, isS6);
     }
-    // "none" のときは何も出さない（応答待ちのみ）
+
+    // 定着の類題は答えを数で打つことが多い。選択肢を出さない場面でも
+    // 「あとでやる」で切り上げられるように、ここで単独のボタンを足す。
+    if (isS6 && !answerArea.querySelector('[data-act="skip-practice"]')) {
+      const skip = document.createElement("button");
+      skip.type = "button";
+      skip.className = "skip-practice";
+      skip.dataset.act = "skip-practice";
+      skip.textContent = "あとでやる";
+      skip.addEventListener("click", () => ctx.onPracticeSkip());
+      answerArea.appendChild(skip);
+    }
   }
 
   function renderCallParentChoice() {
@@ -319,18 +411,26 @@ export function initChat(root, ctx) {
     answerArea.appendChild(grid);
   }
 
-  function renderChoices(aiChoices) {
+  // includeSkip: 定着の類題（S6）のときだけ true。目立たせないよう、ほかの選択肢と同じ大きさで
+  // いちばん最後に「あとでやる」を足す（親要望3章）。
+  function renderChoices(aiChoices, includeSkip) {
+    // アプリが自動で足す「わからない」などと同じ文言がAI側にもあると、同じボタンが2つ並ぶ。
+    // 見た目が紛らわしいだけでなく子どもが迷うので、重なったものは落とす。
+    const norm = (t) => String(t || "").replace(/[\s、。!?！？]/g, "");
+    const fixedNorm = FIXED_CHOICES.map(norm);
+    const deduped = aiChoices.filter((c) => c && !fixedNorm.includes(norm(c)));
     const room = MAX_CHOICE_BUTTONS - FIXED_CHOICES.length;
-    const shown = aiChoices.slice(0, Math.max(0, room));
+    const shown = deduped.slice(0, Math.max(0, room));
     const all = [...shown.map((c) => ({ label: c, fixed: false })), ...FIXED_CHOICES.map((c) => ({ label: c, fixed: true }))];
+    if (includeSkip) all.push({ label: "あとでやる", fixed: true, skip: true });
     const grid = document.createElement("div");
     grid.className = "choice-grid";
-    all.forEach(({ label, fixed }) => {
+    all.forEach(({ label, fixed, skip }) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "choice-btn" + (fixed ? " choice-btn--fixed" : "");
       btn.textContent = label;
-      btn.addEventListener("click", () => ctx.onSend({ text: label }));
+      btn.addEventListener("click", () => (skip ? ctx.onPracticeSkip() : ctx.onSend({ text: label })));
       grid.appendChild(btn);
     });
     answerArea.appendChild(grid);
@@ -395,18 +495,20 @@ export function initChat(root, ctx) {
         <button class="btn-primary" type="button" data-act="home" style="width:100%;max-width:420px;">ホームにもどる</button>
       </div>
     `;
-    root.querySelector('[data-el="summary-unit"]').innerHTML = unitName ? toRubyHtml(unitName) : "（記録なし）";
-    root.querySelector('[data-el="summary-say"]').innerHTML = toRubyHtml(say || "");
+    root.querySelector('[data-el="summary-unit"]').innerHTML = unitName ? toRubyHtml(toPlainMath(unitName)) : "（記録なし）";
+    root.querySelector('[data-el="summary-say"]').innerHTML = toRubyHtml(toPlainMath(say || ""));
     root.querySelector('[data-act="home"]').addEventListener("click", () => ctx.onGoHome());
   }
 
-  function appendChutaText(text) {
-    appendChuta(text);
+  // figure は省略可（会話の再読みこみで entry.figure を渡せるようにしてある）。
+  function appendChutaText(text, figure) {
+    appendChuta(text, figure);
   }
 
   function openTextInput() {
     textRow.hidden = false;
     textInput.focus();
+    scrollToBottom();
   }
 
   return {

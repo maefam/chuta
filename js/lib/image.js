@@ -1,4 +1,4 @@
-// 画像の縮小・切り取り・base64化。EXIFの回転補正はしない（第1段階では不要）。
+// 画像の縮小・切り取り・base64化。写真のExif回転指定は、読みこむ時点で向きを直しておく。
 
 // ビデオ要素の現在のフレームを1枚のJPEG Blobにする
 export async function grabFrame(videoEl) {
@@ -12,38 +12,38 @@ export async function grabFrame(videoEl) {
 
 // 長辺が maxEdge を超えないように縮小する
 export async function shrink(blob, maxEdge = 1600) {
-  const img = await blobToImage(blob);
+  const src = await loadImageSource(blob);
   try {
-    const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
+    const scale = Math.min(1, maxEdge / Math.max(src.width, src.height));
+    const w = Math.max(1, Math.round(src.width * scale));
+    const h = Math.max(1, Math.round(src.height * scale));
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0, w, h);
+    ctx.drawImage(src.image, 0, 0, w, h);
     return blobFromCanvas(canvas);
   } finally {
-    releaseImage(img);
+    src.release();
   }
 }
 
 // rect:{x,y,w,h} は 0..1 の相対値。その範囲だけ切り出す
 export async function crop(blob, rect) {
-  const img = await blobToImage(blob);
+  const src = await loadImageSource(blob);
   try {
-    const sx = rect.x * img.width;
-    const sy = rect.y * img.height;
-    const sw = rect.w * img.width;
-    const sh = rect.h * img.height;
+    const sx = rect.x * src.width;
+    const sy = rect.y * src.height;
+    const sw = rect.w * src.width;
+    const sh = rect.h * src.height;
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(sw));
     canvas.height = Math.max(1, Math.round(sh));
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(src.image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     return blobFromCanvas(canvas);
   } finally {
-    releaseImage(img);
+    src.release();
   }
 }
 
@@ -71,6 +71,22 @@ export function objectUrl(blob) {
 
 function blobFromCanvas(canvas) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+}
+
+// 写真の向き（Exifの回転指定）を直したうえで画像を読みこむ。
+// createImageBitmap が使える環境では imageOrientation:"from-image" で向きを直す。
+// 使えない環境ではこれまでどおり Image 要素を使う（向きは直らないが、機能は止めない）。
+async function loadImageSource(blob) {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
+      return { image: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() };
+    } catch {
+      // 対応していない形式・環境のときは Image 経由に落とす
+    }
+  }
+  const img = await blobToImage(blob);
+  return { image: img, width: img.width, height: img.height, release: () => releaseImage(img) };
 }
 
 function blobToImage(blob) {

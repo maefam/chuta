@@ -111,6 +111,7 @@ export function initParent(root, ctx) {
                 <option value="mock">検証用（キー不要）</option>
                 <option value="claude">Claude</option>
                 <option value="openai">OpenAI</option>
+                <option value="manual">手わたし（テスト用）</option>
               </select>
             </div>
             <div class="field">
@@ -122,12 +123,22 @@ export function initParent(root, ctx) {
               <input type="text" data-f="claudeModel" />
             </div>
             <div class="field">
+              <label>図があるときに使うモデル</label>
+              <input type="text" data-f="claudeVisionModel" />
+              <p class="field-note">空のままなら、ふだんのモデルを使います。</p>
+            </div>
+            <div class="field">
               <label>OpenAI キー</label>
               <input type="password" data-f="openaiKey" autocomplete="off" />
             </div>
             <div class="field">
               <label>OpenAI モデル名</label>
               <input type="text" data-f="openaiModel" />
+            </div>
+            <div class="field">
+              <label>図があるときに使うモデル</label>
+              <input type="text" data-f="openaiVisionModel" />
+              <p class="field-note">空のままなら、ふだんのモデルを使います。</p>
             </div>
             <div class="field">
               <label>考える深さ</label>
@@ -276,8 +287,10 @@ export function initParent(root, ctx) {
       "provider",
       "claudeKey",
       "claudeModel",
+      "claudeVisionModel",
       "openaiKey",
       "openaiModel",
+      "openaiVisionModel",
       "effort",
       "grade",
       "dailyLimit",
@@ -339,7 +352,18 @@ export function initParent(root, ctx) {
 
     function collectForm() {
       const patch = {};
-      for (const key of ["provider", "claudeKey", "claudeModel", "openaiKey", "openaiModel", "effort", "grade", "pin"]) {
+      for (const key of [
+        "provider",
+        "claudeKey",
+        "claudeModel",
+        "claudeVisionModel",
+        "openaiKey",
+        "openaiModel",
+        "openaiVisionModel",
+        "effort",
+        "grade",
+        "pin",
+      ]) {
         const el = root.querySelector(`[data-f="${key}"]`);
         if (el) patch[key] = el.value;
       }

@@ -11,6 +11,21 @@
 
 import { HANDOFF_REQUEST, REPORT_REQUEST } from "./prompt.js";
 
+// 図の表示を確かめるための線分図。「48個を6人ぶんに分ける」を表す（答えの8は書かない）。
+const FIGURE_LINE_SEGMENT =
+  '<svg viewBox="0 0 400 240">' +
+  '<line x1="40" y1="100" x2="360" y2="100" stroke="#4a4038" stroke-width="3"/>' +
+  '<line x1="40" y1="88" x2="40" y2="112" stroke="#4a4038" stroke-width="3"/>' +
+  '<line x1="146" y1="92" x2="146" y2="108" stroke="#4a4038" stroke-width="2"/>' +
+  '<line x1="253" y1="92" x2="253" y2="108" stroke="#4a4038" stroke-width="2"/>' +
+  '<line x1="360" y1="88" x2="360" y2="112" stroke="#4a4038" stroke-width="3"/>' +
+  '<text x="200" y="66" text-anchor="middle" font-size="16" fill="#4a4038">48こ</text>' +
+  '<text x="93" y="140" text-anchor="middle" font-size="16" fill="#c0392b">□こ</text>' +
+  '<text x="200" y="140" text-anchor="middle" font-size="16" fill="#c0392b">□こ</text>' +
+  '<text x="306" y="140" text-anchor="middle" font-size="16" fill="#c0392b">□こ</text>' +
+  '<text x="200" y="172" text-anchor="middle" font-size="14" fill="#2f6f5e">6人ぶん</text>' +
+  "</svg>";
+
 const BASE_NOTES = {
   subject: "算数",
   unit_name: "わり算",
@@ -27,11 +42,11 @@ export async function ask({ settings, session, extraNote }) {
 async function buildReply({ settings, session, extraNote }) {
   await wait(600);
 
-  if (extraNote === HANDOFF_REQUEST) {
+  if (String(extraNote || "").includes(HANDOFF_REQUEST)) {
     return buildHandoff(session);
   }
 
-  if (extraNote === REPORT_REQUEST) {
+  if (String(extraNote || "").includes(REPORT_REQUEST)) {
     return buildReport(session);
   }
 
@@ -78,10 +93,11 @@ async function buildReply({ settings, session, extraNote }) {
         phase: "S3",
         hint_level: 2,
         expect: "choice",
-        say: "そこまで見つかればじゅうぶんだよ。全部の数を、分ける人数で分けるとどうなるか、図か表に書いてみよう。",
+        say: "そこまで見つかればじゅうぶんだよ。全部の数を、分ける人数で分けるとどうなるか、図か表に書いてみよう。こんなふうに書けるよ。",
         choices: ["書いてみた", "まだ迷う"],
         diagnosis: "式の立て方でつまずいている",
         call_parent: callParent,
+        figure: FIGURE_LINE_SEGMENT,
       });
     }
     return step({
@@ -188,6 +204,7 @@ function step(o) {
     call_parent: o.call_parent || false,
     report: "",
     knowledge_suggestion: o.knowledge_suggestion || "",
+    figure: o.figure || "",
     notes: {
       subject: BASE_NOTES.subject,
       unit_name: BASE_NOTES.unit_name,
@@ -222,6 +239,7 @@ function buildHandoff(session) {
     call_parent: false,
     report: "",
     knowledge_suggestion: "",
+    figure: "",
     notes: {
       subject: BASE_NOTES.subject,
       unit_name: BASE_NOTES.unit_name,
@@ -261,6 +279,7 @@ function buildReport(session) {
     call_parent: false,
     report,
     knowledge_suggestion: "",
+    figure: "",
     notes: {
       subject: BASE_NOTES.subject,
       unit_name: BASE_NOTES.unit_name,

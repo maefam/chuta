@@ -15,6 +15,7 @@ export const REPLY_SCHEMA = {
     call_parent: { type: "boolean" },
     report: { type: "string" },
     knowledge_suggestion: { type: "string" },
+    figure: { type: "string" },
     notes: {
       type: "object",
       properties: {
@@ -30,7 +31,7 @@ export const REPLY_SCHEMA = {
       additionalProperties: false,
     },
   },
-  required: ["say", "choices", "expect", "unit", "phase", "hint_level", "done", "handoff", "call_parent", "report", "knowledge_suggestion", "notes"],
+  required: ["say", "choices", "expect", "unit", "phase", "hint_level", "done", "handoff", "call_parent", "report", "knowledge_suggestion", "figure", "notes"],
   additionalProperties: false,
 };
 
@@ -48,6 +49,7 @@ export function validateReply(o) {
   if (typeof o.call_parent !== "boolean") return "call_parent が不正";
   if (typeof o.report !== "string") return "report が不正";
   if (typeof o.knowledge_suggestion !== "string") return "knowledge_suggestion が不正";
+  if (typeof o.figure !== "string") return "figure が不正";
   const n = o.notes;
   if (!n || typeof n !== "object") return "notes がない";
   for (const k of ["subject", "unit_name", "problem", "answer", "diagnosis", "error_type"]) {

@@ -7,8 +7,9 @@ import { AiError } from "./errors.js";
 const ENDPOINT = "https://api.openai.com/v1/chat/completions";
 
 export async function ask({ settings, session, extraNote }) {
+  const model = pickModel(settings, session);
   const body = {
-    model: settings.openaiModel,
+    model,
     messages: buildMessages(session, settings, extraNote),
     response_format: {
       type: "json_schema",
@@ -55,15 +56,25 @@ export async function ask({ settings, session, extraNote }) {
   } catch (e) {
     throw new AiError({ code: "format", message: "JSONとして読めない", detail: e.message });
   }
-  return { reply, usage: extractUsage(data) };
+  return { reply, usage: extractUsage(data, model) };
+}
+
+// 会話に写真が1枚でも含まれ、かつ openaiVisionModel が設定されていればそちらを使う。
+// 空ならふだんの openaiModel を使う。
+function pickModel(settings, session) {
+  const hasImage = ((session && session.history) || []).some((h) => h.image);
+  const visionModel = (settings.openaiVisionModel || "").trim();
+  return hasImage && visionModel ? visionModel : settings.openaiModel;
 }
 
 // data.usage からトークン数を取り出す。取れなければ0（実装仕様4 第4章）。
-function extractUsage(data) {
+// model は実際に送ったモデル名。利用量の記録が食いちがわないよう usage に含めて返す。
+function extractUsage(data, model) {
   const u = data.usage || {};
   return {
     inputTokens: Number(u.prompt_tokens) || 0,
     outputTokens: Number(u.completion_tokens) || 0,
+    model,
   };
 }
 

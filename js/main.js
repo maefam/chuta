@@ -6,11 +6,13 @@ import { Usage } from "./lib/usage.js";
 import { TutorSession } from "./state.js";
 import { ask, AiError } from "./ai/provider.js";
 import { buildAnswerNote, HANDOFF_REQUEST, PRACTICE_END_NOTE, REPORT_REQUEST } from "./ai/prompt.js";
+import { setManualHandler } from "./ai/manual.js";
 import { renderHome } from "./ui/home.js";
 import { initCamera } from "./ui/camera.js";
 import { initChat } from "./ui/chat.js";
 import { initHandoff } from "./ui/handoff.js";
 import { initParent } from "./ui/parent.js";
+import { openManualOverlay } from "./ui/manual.js";
 import { loadRemote, combine } from "./lib/knowledge.js";
 
 // 定着の類題（S6）の問題数。アプリが決める（実装仕様2版7章）。
@@ -40,6 +42,23 @@ let chatController = null;
 let cameraController = null;
 let trackedUrls = [];
 let practiceMistakeSeen = false; // S6で一度でもまちがえたか（practiceTotal を伸ばすかの判断用）
+let practiceSkipped = false; // S6で「あとでやる」を選んだか（親レポートに書いてもらう）
+
+// 定着の類題を「あとでやる」で切り上げたことをレポート作成の依頼に添える一言（親要望3章）。
+const PRACTICE_SKIP_NOTE =
+  "［アプリからの補足：定着の類題は、子どもが「あとでやる」を選んだので残っています。レポートにその旨を書いてください。］";
+
+// ソフトキーボードが出て画面が縮んだとき、実際に見えている高さを --app-h に反映する（親要望1章）。
+// visualViewport が無い環境（古いブラウザなど）では何もしない。
+function setupViewportHeightVar() {
+  if (!window.visualViewport) return;
+  const vv = window.visualViewport;
+  const update = () => {
+    document.documentElement.style.setProperty("--app-h", `${vv.height}px`);
+  };
+  update();
+  vv.addEventListener("resize", update);
+}
 
 // 教え方のメモの正本（knowledge.md）。セッション開始時に1回だけ取りに行き、そのセッション中は使い回す。
 let remoteKnowledge = { text: "", from: "none", fetchedAt: null };
@@ -134,6 +153,7 @@ async function startPhotoFlow() {
   sessionId = await Sessions.create();
   session = new TutorSession({ settings, sessionId });
   practiceMistakeSeen = false;
+  practiceSkipped = false;
   await refreshRemoteKnowledge();
   chatController = initChat(chatEl, chatCtx());
   showScreen(cameraEl);
@@ -165,6 +185,7 @@ async function startTextFlow() {
   sessionId = await Sessions.create();
   session = new TutorSession({ settings, sessionId });
   practiceMistakeSeen = false;
+  practiceSkipped = false;
   await refreshRemoteKnowledge();
   showScreen(chatEl);
   chatController = initChat(chatEl, chatCtx());
@@ -182,6 +203,7 @@ async function continueSession(target) {
   await session.hydrate(stored);
   // practiceTotal が既定より大きければ、途中でまちがえて伸ばした跡と見なす
   practiceMistakeSeen = (session.practiceTotal || 0) > PRACTICE_DEFAULT;
+  practiceSkipped = Boolean(stored && stored.meta && stored.meta.practiceSkipped);
   await refreshRemoteKnowledge();
   showScreen(chatEl);
   chatController = initChat(chatEl, chatCtx());
@@ -194,7 +216,7 @@ function replayHistory(stored) {
       const url = entry.image ? trackUrl(objectUrl(entry.image)) : null;
       chatController.appendChild(entry.text, url);
     } else {
-      chatController.appendChutaText(entry.text);
+      chatController.appendChutaText(entry.text, entry.figure);
     }
   }
   const lastReply = stored && stored.meta && stored.meta.lastReply;
@@ -219,6 +241,7 @@ function chatCtx() {
     onGoHome: goHome,
     onCallParent: () => triggerHandoff(),
     onDismissCallParent: () => dismissCallParent(),
+    onPracticeSkip: () => onPracticeSkipPressed(),
     settings, // 音声ボタン（声の代わりの方法・OpenAIキーの判定）に使う
   };
 }
@@ -345,6 +368,11 @@ async function sendTurn({ text, image, isAnswer, unit }) {
   chatController.setThinking(false);
 
   const { phase, prevPhase } = await applyAiReply(reply);
+  // 寄り道の確認問題に正解した回は、段階もヒント段数も動かないが前には進んでいる。
+  // 行き詰まりとして数えると、おうちの人を呼ぶ判断が早まりすぎるので戻す。
+  if (judgement === "correct") {
+    session.stuckTurns = 0;
+  }
   if (isAnswer && prevPhase === "S6" && judgement && judgement !== "unknown") {
     recordPracticeResult(judgement);
   }
@@ -380,7 +408,8 @@ async function generateReport(fallbackSay) {
   try {
     await session.pushChild("今日はここまでにする", undefined);
     if (chatController) chatController.setThinking(true);
-    const reply = await ask({ settings: aiSettings(), session, extraNote: REPORT_REQUEST });
+    const note = practiceSkipped ? `${REPORT_REQUEST} ${PRACTICE_SKIP_NOTE}` : REPORT_REQUEST;
+    const reply = await ask({ settings: aiSettings(), session, extraNote: note });
     if (chatController) chatController.setThinking(false);
     await session.pushChuta(reply);
     await maybeSaveSuggestion(reply);
@@ -395,6 +424,17 @@ async function generateReport(fallbackSay) {
 }
 
 async function onStopPressed() {
+  const fallback = lastAssistantText() || "また今度、続きをやろう。";
+  const say = await finalizeSession(fallback);
+  chatController.showEnding({ say, unitName: session.notes && session.notes.unit_name });
+}
+
+// 定着の類題（S6）で「あとでやる」を選んだとき。やめるのと同じように終了処理へ入るが、
+// 記録に残してから終える（親要望3章）。生成されるレポートにその旨が添えられる（generateReport 参照）。
+async function onPracticeSkipPressed() {
+  if (!session || !chatController) return;
+  practiceSkipped = true;
+  await Sessions.setMeta(sessionId, { practiceSkipped: true });
   const fallback = lastAssistantText() || "また今度、続きをやろう。";
   const say = await finalizeSession(fallback);
   chatController.showEnding({ say, unitName: session.notes && session.notes.unit_name });
@@ -477,4 +517,6 @@ function openParent() {
 
 // ---------- 起動 ----------
 
+setManualHandler(openManualOverlay); // provider が manual のときだけ使われる（手わたし経路・実装仕様5）
+setupViewportHeightVar();
 mountHome().then(() => showScreen(homeEl));

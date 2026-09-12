@@ -2,6 +2,9 @@
    Android タブレット縦向き（およそ幅800×高さ1280）を基準。横スクロールは出さない。 */
 
 :root {
+  /* ソフトキーボードが出たときの実際に見える高さ。js/main.js が visualViewport を見て書きかえる。
+     visualViewport が無い環境では既定値の 100dvh のままになる。 */
+  --app-h: 100dvh;
   --bg: #f6f3ec;
   --surface: #ffffff;
   --surface-dim: #efece3;
@@ -48,13 +51,17 @@ button {
 
 #app {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh; /* 古い環境のための控え */
+  height: 100dvh;
+  height: var(--app-h);
   position: relative;
 }
 
 .screen {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh; /* 古い環境のための控え */
+  height: 100dvh;
+  height: var(--app-h);
   display: flex;
   flex-direction: column;
 }
@@ -322,7 +329,10 @@ button:disabled {
   display: flex;
   flex-direction: column;
   background: var(--bg);
-  height: 100vh;
+  height: 100vh; /* 古い環境のための控え */
+  height: 100dvh;
+  height: var(--app-h);
+  min-height: 0;
 }
 
 .chat__top {
@@ -381,6 +391,7 @@ button:disabled {
 
 .chat__messages {
   flex: 1;
+  min-height: 0; /* flex:1 だけでは縮まないため、キーボード表示時にここが縮んで入力欄を押し出さないようにする */
   overflow-y: auto;
   padding: 16px 16px 8px;
   display: flex;
@@ -431,10 +442,61 @@ button:disabled {
   object-fit: contain;
 }
 
+/* ================= 図（AIが描いたSVG） ================= */
+/* 吹き出しの中に置く小さな図。タップすると全画面のモーダルで大きく見せる（細かい目盛りが読めるように）。 */
+
+.chuta-figure {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.chuta-figure__svg {
+  width: 100%;
+  line-height: 0;
+}
+
+.chuta-figure__svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chuta-figure__hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.modal-card--figure .modal-card__body {
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-card--figure .modal-card__body svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 74vh;
+}
+
 .chat__bottom {
   border-top: 1px solid var(--border);
   background: var(--surface);
   padding: 14px 16px 10px;
+  /* キーボードで画面が縮んだとき、下の操作だけで画面を埋めてしまわないようにする。
+     会話が必ず少しは見えるように、高さの上限を決めてあふれた分はここだけ動かす。 */
+  max-height: 62%;
+  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .chat__answer-area {
@@ -1284,4 +1346,103 @@ rt {
 
 .modal-card__foot .btn-primary {
   width: 100%;
+}
+
+.field-note {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ================= 手わたし経路（テスト用の覆い） ================= */
+/* 保護者がAPIキーなしで実物のチャットを使って試すための覆い。子どもの画面には出さない。 */
+
+.manual-overlay {
+  z-index: 70;
+}
+
+.manual-body {
+  gap: 16px;
+}
+
+.manual-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.manual-send-text {
+  min-height: 220px;
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  padding: 12px 14px;
+  background: var(--bg);
+  margin-bottom: 8px;
+}
+
+.manual-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.manual-images img {
+  max-width: 160px;
+  max-height: 160px;
+  object-fit: contain;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+.manual-images-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.manual-paste-text {
+  min-height: 140px;
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  padding: 12px 14px;
+}
+
+.manual-error {
+  margin: 0;
+  min-height: 20px;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.manual-foot {
+  display: flex;
+  gap: 12px;
+}
+
+.manual-foot .btn-secondary,
+.manual-foot .btn-primary {
+  flex: 1;
+}
+
+/* 定着の類題を切り上げる「あとでやる」。目立たせず、操作の最後に置く */
+.skip-practice {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  min-height: 52px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted, #7a6a58);
+  font-size: 0.95rem;
 }

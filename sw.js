@@ -3,7 +3,7 @@
 // キャッシュし、取得は「まずネットワーク、だめならキャッシュ」にする。
 // APIへの通信（api.anthropic.com / api.openai.com）は絶対にキャッシュしない。素通しさせる。
 
-const CACHE_VERSION = "chuta-static-v1"; // バージョンを上げると activate で古いキャッシュを消す
+const CACHE_VERSION = "chuta-static-v2"; // バージョンを上げると activate で古いキャッシュを消す
 const NO_CACHE_HOSTS = ["api.anthropic.com", "api.openai.com"];
 
 const PRECACHE_URLS = [
@@ -21,6 +21,8 @@ const PRECACHE_URLS = [
   "./js/ai/provider.js",
   "./js/ai/claude.js",
   "./js/ai/openai.js",
+  "./js/ai/manual.js",
+  "./js/ui/manual.js",
   "./js/ai/mock.js",
   "./js/ai/prompt.js",
   "./js/ai/schema.js",
@@ -79,8 +81,10 @@ self.addEventListener("fetch", (event) => {
   // 同一オリジンの静的ファイルだけを対象にする（フォントCDN等を将来足しても壊れないように）。
   if (url.origin !== self.location.origin) return;
 
+  // ブラウザ自身の保存分をそのまま使うと、置き場のファイルを差し替えても古いままになる。
+  // no-cache で毎回サーバに確かめさせる（変わっていなければ 304 が返るだけなので軽い）。
   event.respondWith(
-    fetch(req)
+    fetch(req.url, { cache: "no-cache", credentials: "same-origin" })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));

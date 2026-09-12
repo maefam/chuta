@@ -75,7 +75,7 @@ export class TutorSession {
     if (Number.isInteger(aiReply.hint_level) && aiReply.hint_level > this.hintLevel) {
       this.hintLevel = aiReply.hint_level; // hint_level は減らない
     }
-    await Sessions.append(this.sessionId, { who: "chuta", text: aiReply.say, ts: Date.now() });
+    await Sessions.append(this.sessionId, { who: "chuta", text: aiReply.say, figure: aiReply.figure || "", ts: Date.now() });
     await this._persistMeta();
   }
 
