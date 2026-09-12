@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>ちゅーた先生</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/icon.svg" />
+<meta name="theme-color" content="#f6f3ec" />
+</head>
+<body>
+<div id="app">
+  <section id="screen-home" class="screen"></section>
+  <section id="screen-camera" class="screen" hidden></section>
+  <section id="screen-chat" class="screen" hidden></section>
+  <section id="screen-handoff" class="screen" hidden></section>
+  <section id="screen-parent" class="screen" hidden></section>
+</div>
+<script type="module" src="js/main.js"></script>
+<script>
+  // 起動の速さとオフラインでの立ち上がりのためだけの登録。失敗しても子どもの画面は普通に動く。
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>

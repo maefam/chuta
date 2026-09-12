@@ -1,0 +1,24 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ちゅーた先生">
+  <!-- ホーム画面アイコン。assets/chuta.js の「ふつう」の絵を写し、正方形に座標を調整したもの。
+       chuta.js 自体は書きかえていない（このファイルは独立した複製）。 -->
+  <circle cx="100" cy="100" r="96" fill="#f6ece0"/>
+  <g transform="translate(100,100) scale(1.35) translate(-100,-91.5)">
+    <circle cx="72" cy="54" r="17" fill="#cdb999"/>
+    <circle cx="72" cy="54" r="8.5" fill="#e8a390"/>
+    <circle cx="128" cy="54" r="17" fill="#cdb999"/>
+    <circle cx="128" cy="54" r="8.5" fill="#e8a390"/>
+    <path d="M54,146 Q54,120 100,120 Q146,120 146,146 Z" fill="#7fa393"/>
+    <ellipse cx="100" cy="94" rx="38" ry="35" fill="#dcc4a8"/>
+    <ellipse cx="100" cy="113" rx="17" ry="11" fill="#f6ece0"/>
+    <ellipse cx="100" cy="106" rx="5" ry="3.6" fill="#7a5a3f"/>
+    <path d="M84,112 L56,107 M84,116 L56,120 M116,112 L144,107 M116,116 L144,120"
+          stroke="#a98f68" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+    <circle cx="86" cy="94" r="12" fill="#fdfbf7" stroke="#7a5a3f" stroke-width="2.6"/>
+    <circle cx="114" cy="94" r="12" fill="#fdfbf7" stroke="#7a5a3f" stroke-width="2.6"/>
+    <path d="M98,94 L102,94" stroke="#7a5a3f" stroke-width="2.6"/>
+    <path d="M74,92 L63,88 M126,92 L137,88" stroke="#7a5a3f" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <circle cx="86" cy="94" r="3.6" fill="#4a3628"/>
+    <circle cx="114" cy="94" r="3.6" fill="#4a3628"/>
+    <path d="M93,121 Q100,126 107,121" stroke="#7a5a3f" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
