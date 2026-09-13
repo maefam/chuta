@@ -446,9 +446,12 @@ export function initChat(root, ctx) {
         ${unit ? `<span class="numpad-display__unit">${unit}</span>` : ""}
       </div>
       <div class="numpad-grid">
-        ${["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "/"].map((k) => `<button class="numpad-key" type="button" data-key="${k}">${k}</button>`).join("")}
+        ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((k) => `<button class="numpad-key" type="button" data-key="${k}">${k}</button>`).join("")}
+        <button class="numpad-key" type="button" data-key=".">.</button>
+        <button class="numpad-key" type="button" data-key="/">/</button>
         <button class="numpad-key numpad-key--erase" type="button" data-key="erase">消す</button>
-        <button class="numpad-key numpad-key--wide" type="button" data-key="enter">決定</button>
+        <button class="numpad-key numpad-key--dontknow" type="button" data-key="dontknow">わからない</button>
+        <button class="numpad-key numpad-key--enter" type="button" data-key="enter">決定</button>
       </div>
     `;
     answerArea.appendChild(wrap);
@@ -459,7 +462,12 @@ export function initChat(root, ctx) {
     wrap.querySelectorAll("[data-key]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const key = btn.dataset.key;
-        if (key === "erase") {
+        if (key === "dontknow") {
+          // 答えを出せなかったときの出口。答えとしては扱わない（採点しない）
+          value = "";
+          ctx.onSend({ text: "わからない" });
+          return;
+        } else if (key === "erase") {
           value = value.slice(0, -1);
         } else if (key === "enter") {
           if (!value) return;
